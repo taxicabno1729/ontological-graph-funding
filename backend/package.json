@@ -1,0 +1,16 @@
+{
+  "name": "funding-graph-backend",
+  "version": "1.0.0",
+  "description": "Startup Funding Graph API",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "seed": "node seed.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "neo4j-driver": "^5.15.0"
+  }
+}
