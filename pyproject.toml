@@ -10,7 +10,12 @@ dependencies = [
     "python-dateutil>=2.8.2",
     "pydantic>=2.5.0",
     "click>=8.1.0",
+    "firecrawl-py>=1.0.0",
+    "python-dotenv>=1.0.0",
 ]
 
 [project.scripts]
 funding-scraper = "scraper.cli:cli"
+
+[tool.setuptools.packages.find]
+include = ["scraper*"]
