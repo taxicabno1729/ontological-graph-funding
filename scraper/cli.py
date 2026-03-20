@@ -1,11 +1,17 @@
 #!/usr/bin/env python3
 """Command-line interface for the funding scraper."""
 
+import os
 import sys
 import json
 import logging
+from pathlib import Path
 import click
-from .scraper import FundingScraper, create_default_scraper
+from dotenv import load_dotenv
+
+# Load .env from project root (two levels up from scraper/)
+load_dotenv(Path(__file__).parent.parent / ".env")
+from .scraper import FundingScraper
 from .sources import MockSource, RSSSource
 from .api_client import FundingAPIClient
 
@@ -18,12 +24,12 @@ logger = logging.getLogger(__name__)
 
 
 @click.group()
-@click.option('--api-url', default='http://localhost:3001/api', help='Backend API URL')
+@click.option('--api-url', default=None, help='Backend API URL')
 @click.pass_context
 def cli(ctx, api_url):
     """Funding data scraper CLI."""
     ctx.ensure_object(dict)
-    ctx.obj['api_url'] = api_url
+    ctx.obj['api_url'] = api_url or os.getenv('API_URL') or 'http://localhost:3001/api'
 
 
 @cli.command()
@@ -53,7 +59,7 @@ def scrape(ctx, source, count, dry_run, output):
                 sys.exit(1)
     
     # Run scraper
-    summary = scraper.run(dry_run=dry_run, count=count)
+    summary = scraper.run(dry_run=dry_run, count=count, max_articles=count)
     
     # Output to file if requested
     if output:

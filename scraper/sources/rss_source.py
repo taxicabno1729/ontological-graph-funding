@@ -1,176 +1,104 @@
-"""RSS feed source for funding news."""
+"""RSS feed source for funding news — LLM-powered extraction."""
 
+import html
 import re
 import feedparser
 from typing import List, Dict, Any
 from datetime import datetime
+
 from .base import BaseSource
+from ..llm_parser import LLMParser
 
 
 class RSSSource(BaseSource):
-    """Fetch funding data from RSS feeds (TechCrunch, VentureBeat, etc.)."""
-    
+    """Fetch funding data from RSS feeds, parsed with Claude structured outputs."""
+
     DEFAULT_FEEDS = [
+        # TechCrunch
+        "https://techcrunch.com/tag/funding/feed/",
         "https://techcrunch.com/category/startups/feed/",
+        # VentureBeat
         "https://venturebeat.com/category/entrepreneur/feed/",
+        # Crunchbase News
+        "https://news.crunchbase.com/feed/",
+        # Sifted (European startups)
+        "https://sifted.eu/feed/",
+        # The Information (startup news)
+        "https://www.theinformation.com/feed",
+        # Business Wire (press releases)
+        "https://www.businesswire.com/rss/home/?rss=g6",
     ]
-    
-    # Patterns to extract funding info from article titles
-    FUNDING_PATTERNS = [
-        r'\$([\d.]+)\s*(M|B|million|billion)',
-        r'raises?\s*\$?([\d.]+)\s*(M|B|million|billion)',
-        r'funding\s*\$?([\d.]+)\s*(M|B|million|billion)',
-    ]
-    
-    COMPANY_PATTERNS = [
-        r'^([^,]+)\s+raises',
-        r'^([^,]+)\s+lands',
-        r'^([^,]+)\s+secures',
-        r'^([^,]+)\s+announces',
-    ]
-    
+
     def __init__(self, config: Dict[str, Any] = None):
         super().__init__("rss", config)
         self.feeds = config.get("feeds", self.DEFAULT_FEEDS) if config else self.DEFAULT_FEEDS
-    
+        self._parser = LLMParser()
+
     def fetch(self, **kwargs) -> List[Dict[str, Any]]:
-        """Fetch and parse RSS feeds for funding news."""
+        """Fetch and parse RSS feeds for funding news using Claude."""
         records = []
-        max_articles = kwargs.get("max_articles", 50)
-        
+        max_articles = kwargs.get("count", kwargs.get("max_articles", 20))
+
         for feed_url in self.feeds:
             try:
                 self.logger.info(f"Fetching RSS feed: {feed_url}")
                 feed = feedparser.parse(feed_url)
-                
+
                 for entry in feed.entries[:max_articles]:
                     record = self._parse_entry(entry)
                     if record and self.validate_record(record):
                         records.append(record)
-                        
+
             except Exception as e:
                 self.logger.error(f"Error parsing feed {feed_url}: {e}")
                 continue
-        
+
         self.logger.info(f"Extracted {len(records)} funding records from RSS feeds")
         return records
-    
+
     def _parse_entry(self, entry) -> Dict[str, Any] | None:
-        """Parse a single RSS entry for funding information."""
+        """Parse a single RSS entry using Claude structured output."""
         title = entry.get("title", "")
-        summary = entry.get("summary", "")
-        text = f"{title} {summary}"
-        
-        # Extract funding amount
-        amount = self._extract_amount(text)
-        if not amount:
+        summary = self._clean_text(entry.get("summary", ""))
+
+        try:
+            extraction = self._parser.parse(title, summary)
+        except Exception as e:
+            self.logger.warning(f"LLM parse failed for '{title}': {e}")
             return None
-        
-        # Extract company name
-        company_name = self._extract_company(title)
-        if not company_name:
+
+        if not extraction:
             return None
-        
-        # Parse date
+
         published = entry.get("published_parsed") or entry.get("updated_parsed")
         year = published.tm_year if published else datetime.now().year
-        
-        # Try to extract investors from text
-        investors = self._extract_investors(text)
-        
-        # Determine category from text
-        category = self._categorize(text)
-        
+
         return {
-            "id": company_name.lower().replace(" ", "-"),
-            "name": company_name,
-            "category": category,
-            "amount": amount,
-            "valuation": None,  # Usually not in RSS
+            "id": self._slugify(extraction.company_name),
+            "name": extraction.company_name,
+            "category": extraction.category or "Technology",
+            "amount": extraction.funding_amount_millions,
+            "valuation": extraction.valuation_millions,
             "year": year,
             "quarter": self._get_quarter(published),
-            "city": None,  # Usually not in RSS
-            "country": None,
-            "investors": investors,
-            "round": self._extract_round(text),
+            "city": extraction.city,
+            "country": extraction.country,
+            "investors": extraction.investors if extraction.investors else ["Unknown"],
+            "round": extraction.funding_round,
             "description": summary[:200] if summary else title,
             "source_url": entry.get("link", ""),
         }
-    
-    def _extract_amount(self, text: str) -> float | None:
-        """Extract funding amount from text."""
-        for pattern in self.FUNDING_PATTERNS:
-            match = re.search(pattern, text, re.IGNORECASE)
-            if match:
-                amount = float(match.group(1))
-                unit = match.group(2).upper()
-                if unit in ['B', 'BILLION']:
-                    amount *= 1000  # Convert to millions
-                return amount
-        return None
-    
-    def _extract_company(self, title: str) -> str | None:
-        """Extract company name from title."""
-        for pattern in self.COMPANY_PATTERNS:
-            match = re.search(pattern, title, re.IGNORECASE)
-            if match:
-                return match.group(1).strip()
-        # Fallback: first few words
-        words = title.split()[:3]
-        return " ".join(words) if words else None
-    
-    def _extract_investors(self, text: str) -> List[str]:
-        """Try to extract investor names from text."""
-        # Common VC patterns
-        vc_patterns = [
-            r'(Andreessen Horowitz|a16z)',
-            r'(Sequoia Capital|Sequoia)',
-            r'(Accel)',
-            r'(Lightspeed Venture Partners|Lightspeed)',
-            r'(Founders Fund)',
-            r'(Khosla Ventures)',
-            r'(Index Ventures)',
-            r'(Benchmark)',
-            r'(Greylock)',
-            r'(Kleiner Perkins)',
-        ]
-        
-        investors = []
-        for pattern in vc_patterns:
-            matches = re.findall(pattern, text, re.IGNORECASE)
-            investors.extend(matches)
-        
-        return investors[:3]  # Limit to top 3
-    
-    def _extract_round(self, text: str) -> str | None:
-        """Extract funding round from text."""
-        rounds = ['Series D', 'Series C', 'Series B', 'Series A', 'Seed', 'Growth']
-        for r in rounds:
-            if r.lower() in text.lower():
-                return r
-        return None
-    
-    def _categorize(self, text: str) -> str:
-        """Categorize company based on text content."""
-        text_lower = text.lower()
-        categories = {
-            'AI': ['ai', 'artificial intelligence', 'machine learning', 'ml'],
-            'Healthcare': ['health', 'medical', 'biotech', 'pharma'],
-            'Fintech': ['fintech', 'finance', 'payment', 'banking'],
-            'Crypto': ['crypto', 'blockchain', 'web3', 'bitcoin'],
-            'Climate Tech': ['climate', 'green', 'sustainable', 'carbon'],
-            'Robotics': ['robot', 'automation', 'drone'],
-            'Enterprise': ['enterprise', 'saas', 'software'],
-        }
-        
-        for cat, keywords in categories.items():
-            if any(kw in text_lower for kw in keywords):
-                return cat
-        return "Technology"
-    
+
+    def _clean_text(self, text: str) -> str:
+        text = html.unescape(text or "")
+        text = re.sub(r"<[^>]+>", " ", text)
+        return re.sub(r"\s+", " ", text).strip()
+
     def _get_quarter(self, published) -> str:
-        """Determine quarter from date."""
         if not published:
             return f"Q{(datetime.now().month - 1) // 3 + 1}"
-        month = published.tm_mon
-        return f"Q{(month - 1) // 3 + 1}"
+        return f"Q{(published.tm_mon - 1) // 3 + 1}"
+
+    def _slugify(self, value: str) -> str:
+        slug = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
+        return slug or "unknown-company"
