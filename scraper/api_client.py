@@ -36,7 +36,10 @@ class FundingAPIClient:
                 f"{self.base_url}/health",
                 timeout=5
             )
-            return response.status_code == 200
+            if response.status_code != 200:
+                return False
+            payload = response.json()
+            return payload.get("neo4j") == "connected"
         except Exception as e:
             logger.error(f"Health check failed: {e}")
             return False
@@ -102,25 +105,23 @@ class FundingAPIClient:
         """Check if a company already exists."""
         return self.get_company(company_id) is not None
     
-    def push_company(self, record: Dict[str, Any]) -> bool:
-        """Push a single company record to the backend.
-        
-        Note: The backend currently uses static data. This method
-        logs what would be pushed for now.
-        """
+    def push_company(self, record: Dict[str, Any]) -> str:
+        """Push a single company record to the backend."""
         try:
-            # Check if company exists
-            if self.company_exists(record["id"]):
-                logger.info(f"Company {record['id']} already exists, skipping")
-                return False
-            
-            logger.info(f"Would push company: {record['name']} (${record['amount']}M)")
-            # TODO: Implement actual POST endpoint when backend supports it
-            return True
-            
+            response = self.session.post(
+                f"{self.base_url}/companies",
+                json=record,
+                timeout=self.timeout
+            )
+
+            response.raise_for_status()
+            payload = response.json()
+            action = "created" if payload.get("created") else "updated"
+            logger.info("%s company: %s ($%sM)", action.title(), record["name"], record["amount"])
+            return "success"
         except Exception as e:
             logger.error(f"Failed to push company {record.get('id')}: {e}")
-            return False
+            return "failed"
     
     def push_companies(self, records: List[Dict[str, Any]], delay: float = 0.5) -> Dict[str, int]:
         """Push multiple company records with rate limiting.
@@ -135,14 +136,8 @@ class FundingAPIClient:
         results = {"success": 0, "skipped": 0, "failed": 0}
         
         for record in records:
-            if self.company_exists(record["id"]):
-                results["skipped"] += 1
-                continue
-                
-            if self.push_company(record):
-                results["success"] += 1
-            else:
-                results["failed"] += 1
+            outcome = self.push_company(record)
+            results[outcome] += 1
             
             time.sleep(delay)
         

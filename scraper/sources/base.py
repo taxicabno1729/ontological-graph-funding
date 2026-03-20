@@ -4,6 +4,8 @@ from abc import ABC, abstractmethod
 from typing import List, Dict, Any
 import logging
 
+from ..models import ValidationError, validate_funding_record
+
 logger = logging.getLogger(__name__)
 
 
@@ -36,10 +38,13 @@ class BaseSource(ABC):
         pass
     
     def validate_record(self, record: Dict[str, Any]) -> bool:
-        """Validate a funding record has required fields."""
-        required = ['name', 'amount', 'year']
-        missing = [f for f in required if f not in record or record[f] is None]
-        if missing:
-            self.logger.warning(f"Record missing required fields: {missing}")
+        """Validate and normalize a funding record."""
+        try:
+            normalized = validate_funding_record(record).model_dump()
+        except ValidationError as exc:
+            self.logger.warning("Record rejected: %s", exc.errors())
             return False
+
+        record.clear()
+        record.update(normalized)
         return True
