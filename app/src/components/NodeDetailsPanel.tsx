@@ -1,12 +1,17 @@
+import { Volume2, Square } from 'lucide-react';
 import type { FundingNode, FundingData } from '@/data/fundingData';
+import { useNodeNarration } from '@/hooks/useNodeNarration';
 
 interface NodeDetailsPanelProps {
   node: FundingNode | null;
   data: FundingData;
   onClose: () => void;
+  onNarratingChange: (id: string | null) => void;
 }
 
-const NodeDetailsPanel = ({ node, data, onClose }: NodeDetailsPanelProps) => {
+const NodeDetailsPanel = ({ node, data, onClose, onNarratingChange }: NodeDetailsPanelProps) => {
+  const { narrateState, handleNarrate, stop } = useNodeNarration(node?.id ?? '', onNarratingChange);
+
   if (!node) return null;
 
   const fmt = (n?: number) => n ? (n >= 1000 ? `$${(n/1000).toFixed(1)}B` : `$${n}M`) : '';
@@ -42,7 +47,7 @@ const NodeDetailsPanel = ({ node, data, onClose }: NodeDetailsPanelProps) => {
       background: 'rgba(15, 23, 42, 0.98)', borderLeft: '1px solid #334155',
       padding: 20, overflow: 'auto', zIndex: 100
     }}>
-      <button onClick={onClose} style={{
+      <button onClick={() => { stop(); onClose(); }} style={{
         position: 'absolute', top: 12, right: 12,
         background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: 20
       }}>×</button>
@@ -51,6 +56,30 @@ const NodeDetailsPanel = ({ node, data, onClose }: NodeDetailsPanelProps) => {
         <div style={{ fontSize: 20, fontWeight: 'bold', color: 'white', marginBottom: 4 }}>{node.name}</div>
         <div style={{ fontSize: 12, color: getColor(node.type), textTransform: 'capitalize' }}>{node.type}</div>
       </div>
+
+      <button
+        onClick={handleNarrate}
+        disabled={narrateState === 'loading'}
+        style={{
+          width: '100%', display: 'flex', alignItems: 'center', gap: 6,
+          padding: '8px 14px', marginBottom: 16,
+          background: narrateState === 'playing' ? 'linear-gradient(135deg, #7c3aed, #3b82f6)' : '#1e293b',
+          border: `1px solid ${narrateState === 'playing' ? '#7c3aed' : '#334155'}`,
+          borderRadius: 8, color: narrateState === 'playing' ? 'white' : '#94a3b8',
+          cursor: narrateState === 'loading' ? 'wait' : 'pointer',
+          animation: narrateState === 'playing' ? 'pulse-glow-active 1.2s ease-in-out infinite' : 'none',
+        }}
+      >
+        {narrateState === 'playing'
+          ? <Square style={{ width: 14, height: 14, flexShrink: 0 }} />
+          : <Volume2 style={{ width: 14, height: 14, flexShrink: 0, animation: narrateState === 'loading' ? 'spin 1s linear infinite' : 'none' }} />
+        }
+        <span style={{ fontSize: 13, fontWeight: 600 }}>
+          {narrateState === 'idle'    && 'Hear Brief'}
+          {narrateState === 'loading' && 'Generating…'}
+          {narrateState === 'playing' && 'Stop Brief'}
+        </span>
+      </button>
 
       {node.description && (
         <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 16, padding: 12, background: 'rgba(30, 41, 59, 0.6)', borderRadius: 8 }}>

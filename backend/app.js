@@ -3,6 +3,8 @@ const cors = require('cors');
 const data = require('./data');
 const { AppError, asyncRoute } = require('./errors');
 const { parseYearParam, validateCompanyPayload } = require('./validation');
+const { buildScript, textToSpeech } = require('./narrator');
+const { buildNodeScript } = require('./aiScriptWriter');
 
 function createApp({ store }) {
   const app = express();
@@ -73,6 +75,46 @@ function createApp({ store }) {
       const payload = validateCompanyPayload(req.body);
       const result = await store.upsertCompany(payload);
       res.status(result.created ? 201 : 200).json(result);
+    })
+  );
+
+  app.get(
+    '/api/narrate',
+    asyncRoute(async (req, res) => {
+      const year = parseYearParam(req.query.year);
+      const [stats, graph] = await Promise.all([
+        store.getStats(year),
+        store.getFundingGraph(year),
+      ]);
+
+      const script = buildScript(stats, graph.nodes);
+
+      // Return just the script if ?text=true
+      if (req.query.text === 'true') {
+        return res.json({ script });
+      }
+
+      const audioBuffer = await textToSpeech(script);
+      res.set({
+        'Content-Type': 'audio/mpeg',
+        'Content-Disposition': 'inline; filename="funding_briefing.mp3"',
+        'Content-Length': audioBuffer.length,
+      });
+      res.send(audioBuffer);
+    })
+  );
+
+  app.get(
+    '/api/narrate/:id',
+    asyncRoute(async (req, res) => {
+      const { node, connections } = await store.getNodeDetails(req.params.id);
+      const script = await buildNodeScript(node, connections);
+      if (req.query.text === 'true') {
+        return res.json({ script, nodeId: req.params.id, nodeType: node.type });
+      }
+      const audioBuffer = await textToSpeech(script);
+      res.set({ 'Content-Type': 'audio/mpeg', 'Content-Length': audioBuffer.length });
+      res.send(audioBuffer);
     })
   );
 

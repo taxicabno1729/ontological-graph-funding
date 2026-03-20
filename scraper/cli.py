@@ -119,5 +119,6 @@ def search(ctx, query):
         click.echo("No results found")
 
 
+
 if __name__ == '__main__':
     cli()
