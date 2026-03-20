@@ -65,3 +65,8 @@ body {
   from { opacity: 0; transform: translateY(6px); }
   to   { opacity: 1; transform: translateY(0); }
 }
+
+@keyframes node-narrate-ring {
+  0%, 100% { opacity: 0.85; transform: scale(1); }
+  50%       { opacity: 0.2;  transform: scale(1.5); }
+}

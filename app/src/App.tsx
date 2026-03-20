@@ -42,6 +42,17 @@ function App() {
   const [narrateState, setNarrateState] = useState<'idle' | 'loading' | 'playing'>('idle');
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [narratingNodeId, setNarratingNodeId] = useState<string | null>(null);
+
+  const handleNodeNarratingChange = useCallback((nodeId: string | null) => {
+    // Mutual exclusion: stop global audio if node narration starts
+    if (nodeId !== null && narrateState === 'playing') {
+      audioRef.current?.pause();
+      audioRef.current = null;
+      setNarrateState('idle');
+    }
+    setNarratingNodeId(nodeId);
+  }, [narrateState]);
 
   useEffect(() => {
     checkHealth()
@@ -153,6 +164,10 @@ function App() {
       audioRef.current = null;
       setNarrateState('idle');
       return;
+    }
+    // Stop node narration if active
+    if (narratingNodeId !== null) {
+      setSelectedNode(null);
     }
     setNarrateState('loading');
     try {
@@ -363,7 +378,7 @@ function App() {
 
         <div style={{ flex: 1, position: 'relative' }}>
           {filteredData.nodes.length > 0 ? (
-            <FundingGraph data={filteredData} onNodeClick={handleNodeClick} selectedNodeId={selectedNode?.id} />
+            <FundingGraph data={filteredData} onNodeClick={handleNodeClick} selectedNodeId={selectedNode?.id} narratingNodeId={narratingNodeId} />
           ) : (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', background: '#0f172a', color: '#64748b', fontSize: 18 }}>
               {loading ? 'Loading…' : 'No data to display'}
@@ -383,7 +398,7 @@ function App() {
           )}
         </div>
 
-        {selectedNode && <NodeDetailsPanel node={selectedNode} data={data} onClose={() => setSelectedNode(null)} />}
+        {selectedNode && <NodeDetailsPanel node={selectedNode} data={data} onClose={() => setSelectedNode(null)} onNarratingChange={handleNodeNarratingChange} />}
       </main>
 
       {/* ── Footer ── */}

@@ -6,12 +6,13 @@ interface FundingGraphProps {
   data: FundingData;
   onNodeClick?: (node: FundingNode) => void;
   selectedNodeId?: string | null;
+  narratingNodeId?: string | null;
 }
 
 type SimNode = FundingNode & { x?: number; y?: number; vx?: number; vy?: number; fx?: number | null; fy?: number | null };
 type SimLink = { source: string | SimNode; target: string | SimNode; type?: string; amount?: number };
 
-const FundingGraph: React.FC<FundingGraphProps> = ({ data, onNodeClick, selectedNodeId }) => {
+const FundingGraph: React.FC<FundingGraphProps> = ({ data, onNodeClick, selectedNodeId, narratingNodeId }) => {
   const svgRef = useRef<SVGSVGElement>(null);
   const simRef = useRef<d3.Simulation<SimNode, SimLink> | null>(null);
   const [hoveredNode, setHoveredNode] = useState<FundingNode | null>(null);
@@ -166,6 +167,23 @@ const FundingGraph: React.FC<FundingGraphProps> = ({ data, onNodeClick, selected
 
     return () => { simulation.stop(); };
   }, [data, onNodeClick, selectedNodeId]);
+
+  useEffect(() => {
+    if (!svgRef.current) return;
+    d3.select(svgRef.current).selectAll('circle.narrate-ring').remove();
+    if (!narratingNodeId) return;
+    d3.select(svgRef.current).selectAll<SVGGElement, SimNode>('g.node')
+      .filter(d => d.id === narratingNodeId)
+      .append('circle')
+      .attr('class', 'narrate-ring')
+      .attr('r', d => getNodeSize(d.type, d.amount) + 7)
+      .attr('fill', 'none')
+      .attr('stroke', '#a78bfa')
+      .attr('stroke-width', 2)
+      .style('animation', 'node-narrate-ring 1.4s ease-in-out infinite')
+      .style('transform-origin', 'center')
+      .style('pointer-events', 'none');
+  }, [narratingNodeId]);
 
   const resetZoom = useCallback(() => {
     if (!svgRef.current) return;

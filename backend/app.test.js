@@ -143,6 +143,23 @@ test('POST /api/companies normalizes and returns created records', async () => {
   assert.equal(response.body.company.id, 'newco');
 });
 
+test('GET /api/narrate/:id returns script in text mode', async () => {
+  const saved = process.env.ANTHROPIC_API_KEY;
+  process.env.ANTHROPIC_API_KEY = ''; // force fallback template
+  try {
+    const app = createApp({ store: createFakeStore() });
+    const response = await invokeRoute(app, 'get', '/api/narrate/:id', {
+      params: { id: 'openai' },
+      query: { text: 'true' },
+    });
+    assert.equal(response.statusCode, 200);
+    assert.ok(typeof response.body.script === 'string' && response.body.script.length > 0);
+    assert.equal(response.body.nodeId, 'openai');
+  } finally {
+    process.env.ANTHROPIC_API_KEY = saved;
+  }
+});
+
 test('POST /api/seed returns a seeding summary', async () => {
   const app = createApp({ store: createFakeStore() });
   const response = await invokeRoute(app, 'post', '/api/seed');

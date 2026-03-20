@@ -4,6 +4,7 @@ const data = require('./data');
 const { AppError, asyncRoute } = require('./errors');
 const { parseYearParam, validateCompanyPayload } = require('./validation');
 const { buildScript, textToSpeech } = require('./narrator');
+const { buildNodeScript } = require('./aiScriptWriter');
 
 function createApp({ store }) {
   const app = express();
@@ -99,6 +100,20 @@ function createApp({ store }) {
         'Content-Disposition': 'inline; filename="funding_briefing.mp3"',
         'Content-Length': audioBuffer.length,
       });
+      res.send(audioBuffer);
+    })
+  );
+
+  app.get(
+    '/api/narrate/:id',
+    asyncRoute(async (req, res) => {
+      const { node, connections } = await store.getNodeDetails(req.params.id);
+      const script = await buildNodeScript(node, connections);
+      if (req.query.text === 'true') {
+        return res.json({ script, nodeId: req.params.id, nodeType: node.type });
+      }
+      const audioBuffer = await textToSpeech(script);
+      res.set({ 'Content-Type': 'audio/mpeg', 'Content-Length': audioBuffer.length });
       res.send(audioBuffer);
     })
   );

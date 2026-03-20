@@ -65,6 +65,14 @@ export async function fetchNarrationAudio(year?: number | 'all'): Promise<Blob> 
   return response.blob();
 }
 
+export async function fetchNodeNarrationAudio(nodeId: string): Promise<Blob> {
+  const response = await fetch(`${API_URL}/narrate/${encodeURIComponent(nodeId)}`, {
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!response.ok) throw new Error(`Failed to generate brief for ${nodeId}`);
+  return response.blob();
+}
+
 export async function checkHealth(): Promise<{ status: string; neo4j: string }> {
   try {
     return await requestJson<{ status: string; neo4j: string }>('/health');
